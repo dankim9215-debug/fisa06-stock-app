@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 import streamlit as st
 import feedparser
 
-# 1. 보안 및 기본 설정 ㅋㅋ
+# 1. 보안 및 기본 설정
 ssl._create_default_https_context = ssl._create_unverified_context
 st.set_page_config(page_title="금융 데이터 분석 시스템", layout="wide")
 
