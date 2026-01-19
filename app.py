@@ -10,6 +10,12 @@ import pandas as pd
 import FinanceDataReader as fdr
 import matplotlib.pyplot as plt
 import koreanize_matplotlib
+import os
+from dotenv import load_dotenv
+
+load_dotenv() # .env에 있는 환경 변수를 읽어옴 -> 맨 앞줄에 작성
+my_name = os.getenv('MY_NAME')
+st.header(my_name)
 
 def get_krx_company_list() -> pd.DataFrame:
     try:
