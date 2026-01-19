@@ -6,3 +6,7 @@
 
 # 폴더는 폴더명/ 로 작성합니다.
 st\
+
+# ! not
+# txt 확장자인 파일을 다 제외할 건데 requirements.txt는 빼고
+!requirements.txt
