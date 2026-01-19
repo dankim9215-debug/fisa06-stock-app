@@ -9,42 +9,56 @@ import feedparser
 
 # 1. 보안 및 기본 설정
 ssl._create_default_https_context = ssl._create_unverified_context
-st.set_page_config(page_title="금융 데이터 분석 시스템", layout="wide")
+st.set_page_config(page_title="PRO 금융 분석 시스템", layout="wide")
 
-# --- CSS: 다크모드 대응 및 레이아웃 스타일 ---
+# --- CSS: 커스텀 네온 스타일링 ---
 st.markdown("""
     <style>
+    .main { background-color: #0e1117; }
     [data-testid="stMetricValue"] > div {
-        color: var(--text-color) !important;
-        font-size: 2.8rem !important;
+        color: #00d4ff !important;
+        font-size: 2.2rem !important;
         font-weight: 800 !important;
+        text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
     }
     .news-container {
-        padding: 15px;
-        border-radius: 12px;
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        margin-bottom: 12px;
-        background-color: rgba(128, 128, 128, 0.05);
+        padding: 20px;
+        border-radius: 15px;
+        border: 1px solid rgba(0, 212, 255, 0.2);
+        margin-bottom: 15px;
+        background: rgba(255, 255, 255, 0.03);
+        transition: all 0.3s ease;
     }
-    .news-title {
-        font-weight: 600;
-        text-decoration: none;
-        color: #228be6 !important;
-        font-size: 1.05rem;
+    .news-container:hover {
+        border-color: #00d4ff;
+        background: rgba(0, 212, 255, 0.05);
+        transform: translateY(-2px);
     }
     .insight-box {
-        background-color: rgba(34, 139, 230, 0.1);
+        background: linear-gradient(135deg, rgba(34, 139, 230, 0.15) 0%, rgba(0, 212, 255, 0.05) 100%);
         padding: 25px;
         border-radius: 20px;
-        border-left: 8px solid #228be6;
-        color: var(--text-color) !important;
-        margin-bottom: 25px;
-        line-height: 1.6;
+        border: 1px solid #228be6;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 뉴스 및 데이터 수집 함수 ---
+# --- 데이터 계산 함수 (지표 추가) ---
+def add_indicators(df):
+    # 볼린저 밴드
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    df['std'] = df['Close'].rolling(window=20).std()
+    df['Upper'] = df['MA20'] + (df['std'] * 2)
+    df['Lower'] = df['MA20'] - (df['std'] * 2)
+    # RSI (상대강도지수)
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+    return df
+
 def get_stock_news(keyword):
     rss_url = f"https://news.google.com/rss/search?q={keyword}+주가&hl=ko&gl=KR&ceid=KR:ko"
     feed = feedparser.parse(rss_url)
@@ -56,125 +70,83 @@ def get_listing_data():
     df['Display'] = df['Name'] + " (" + df['Code'] + ")"
     return df
 
-df_listing = get_listing_data()
-
 # --- 사이드바 ---
+df_listing = get_listing_data()
 with st.sidebar:
-    st.title("📊 분석 제어 센터")
-    selected_display = st.selectbox(
-        '종목 검색', 
-        options=df_listing['Display'].unique(),
-        index=None,
-        placeholder="종목명을 입력하세요..."
-    )
+    st.markdown("## 🚀 분석 컨트롤러")
+    selected_display = st.selectbox('종목 선택', options=df_listing['Display'].unique(), index=None)
     today = datetime.datetime.now()
-    date_range = st.date_input('분석 범위', [datetime.date(today.year, 1, 1), today])
-    analyze_btn = st.button('데이터 모델 가동', use_container_width=True, type="primary")
+    date_range = st.date_input('기간 설정', [datetime.date(today.year-1, today.month, today.day), today])
+    analyze_btn = st.button('실시간 데이터 렌더링', use_container_width=True, type="primary")
 
-# --- 메인 섹션 ---
+# --- 메인 대시보드 ---
 if analyze_btn and selected_display:
     try:
         code = selected_display.split('(')[-1].replace(')', '')
         name = selected_display.split(' (')[0]
-        price_df = fdr.DataReader(code, date_range[0], date_range[1])
+        df = fdr.DataReader(code, date_range[0], date_range[1])
+        df = add_indicators(df)
 
-        if not price_df.empty:
-            curr_p = int(price_df['Close'].iloc[-1])
-            prev_p = int(price_df['Close'].iloc[-2]) if len(price_df) > 1 else curr_p
-            high_p = int(price_df['High'].max())
-            low_p = int(price_df['Low'].min())
+        if not df.empty:
+            st.markdown(f"# {name} <small style='color:#868e96;'>{code}</small>", unsafe_allow_html=True)
             
-            st.markdown(f"## {name} <span style='font-size:1rem; color:#868e96;'>{code}</span>", unsafe_allow_html=True)
+            # 1. 지표 카드
+            curr_p = int(df['Close'].iloc[-1])
+            prev_p = int(df['Close'].iloc[-2])
+            diff = curr_p - prev_p
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("현재가", f"{curr_p:,}원", f"{diff:,}원")
+            m2.metric("24h 최고", f"{int(df['High'].max()):,}원")
+            m3.metric("24h 최저", f"{int(df['Low'].min()):,}원")
+            m4.metric("RSI 지표", f"{df['RSI'].iloc[-1]:.1f}", "과매수" if df['RSI'].iloc[-1] > 70 else "과매도" if df['RSI'].iloc[-1] < 30 else "중립")
+
+            # 2. 메인 프로페셔널 차트 (Plotly)
+            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
+                               vertical_spacing=0.03, 
+                               row_heights=[0.6, 0.2, 0.2],
+                               subplot_titles=("Candlestick & Bollinger Bands", "Volume", "RSI Oscillator"))
+
+            # 캔들스틱 차트
+            fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], 
+                                         name='주가', increasing_line_color='#ff4b4b', decreasing_line_color='#007bff'), row=1, col=1)
             
-            # 1. 상단 지표 카드
-            m1, m2, m3 = st.columns(3)
-            with m1: st.metric("현재가", f"{curr_p:,}원", f"{curr_p - prev_p:,}원")
-            with m2: st.metric("기간 최고가", f"{high_p:,}원")
-            with m3: st.metric("기간 최저가", f"{low_p:,}원")
+            # 볼린저 밴드 (영역 채우기)
+            fig.add_trace(go.Scatter(x=df.index, y=df['Upper'], line=dict(color='rgba(255,255,255,0.2)', width=1), name='Upper Band'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=df.index, y=df['Lower'], line=dict(color='rgba(255,255,255,0.2)', width=1), fill='tonexty', fillcolor='rgba(0,212,255,0.05)', name='Lower Band'), row=1, col=1)
 
-            # 2. 통합 차트 (제목 및 축 라벨 추가)
-            fig = make_subplots(
-                rows=2, cols=1, 
-                shared_xaxes=True, 
-                vertical_spacing=0.1, 
-                row_heights=[0.7, 0.3],
-                subplot_titles=("📈 주가 추이 (Price Trend)", "📊 거래량 (Trading Volume)") # 각 그래프 제목 추가
-            )
+            # 거래량
+            colors = ['#ff4b4b' if df['Close'].iloc[i] >= df['Open'].iloc[i] else '#007bff' for i in range(len(df))]
+            fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='Volume'), row=2, col=1)
 
-            # 상단: 주가
-            fig.add_trace(go.Scatter(
-                x=price_df.index, y=price_df['Close'], name='종가',
-                line=dict(color='#228be6', width=3), fill='tozeroy', 
-                fillcolor='rgba(34, 139, 230, 0.05)'
-            ), row=1, col=1)
+            # RSI
+            fig.add_trace(go.Scatter(x=df.index, y=df['RSI'], line=dict(color='#00d4ff', width=2), name='RSI'), row=3, col=1)
+            fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
+            fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
 
-            # 하단: 거래량
-            colors = ['#ff4b4b' if price_df['Close'].iloc[i] >= price_df['Close'].iloc[i-1] 
-                      else '#007bff' for i in range(len(price_df))]
+            # 레이아웃 업데이트
+            fig.update_layout(height=900, template="plotly_dark", 
+                              paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                              xaxis_rangeslider_visible=False, showlegend=False)
             
-            fig.add_trace(go.Bar(
-                x=price_df.index, y=price_df['Volume'], name='거래량',
-                marker_color=colors, opacity=0.8
-            ), row=2, col=1)
-
-            # 최고/최저 어노테이션
-            max_idx = price_df['High'].idxmax()
-            min_idx = price_df['Low'].idxmin()
-            fig.add_annotation(x=max_idx, y=high_p, text=f"최고 {high_p:,}", showarrow=True, 
-                               arrowhead=1, arrowcolor="#ff4b4b", font=dict(color="#ff4b4b"), row=1, col=1)
-            fig.add_annotation(x=min_idx, y=low_p, text=f"최저 {low_p:,}", showarrow=True, 
-                               arrowhead=1, arrowcolor="#007bff", font=dict(color="#007bff"), row=1, col=1)
-
-            # 레이아웃 및 축 설정
-            fig.update_layout(
-                template="none", height=700, margin=dict(l=0, r=0, t=50, b=0),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                showlegend=False, font=dict(color='#868e96')
-            )
-            
-            # Y축 단위 및 위치 설정
-            fig.update_yaxes(title_text="가격 (원)", row=1, col=1, side="right", gridcolor='rgba(128, 128, 128, 0.1)', tickformat=",")
-            fig.update_yaxes(title_text="거래량 (주)", row=2, col=1, side="right", gridcolor='rgba(128, 128, 128, 0.1)', tickformat=",")
-            
-            # 서브플롯 제목 스타일 수정 (글자색 다크모드 대응)
-            for i in fig['layout']['annotations']:
-                i['font'] = dict(size=16, color='#228be6', weight='bold')
-
             st.plotly_chart(fig, use_container_width=True)
 
-            # 3. 뉴스 및 인사이트 섹션
-            st.markdown("---")
-            col_news, col_insight = st.columns([1.5, 1])
-
-            with col_news:
-                st.markdown("### 📰 실시간 시장 뉴스")
-                news_items = get_stock_news(name)
-                if news_items:
-                    for item in news_items:
-                        st.markdown(f"""
-                        <div class="news-container">
-                            <a href="{item.link}" target="_blank" class="news-title">{item.title}</a>
-                            <p style="font-size:0.85rem; color:#868e96; margin-top:8px;">{item.published}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.info("실시간 뉴스를 가져올 수 없습니다.")
-
-            with col_insight:
-                st.markdown("### 💡 금융 분석 인사이트")
+            # 3. 하단 섹션
+            c1, c2 = st.columns([1, 1.2])
+            with c1:
+                st.markdown("### 💡 AI 분석 엔진 인사이트")
                 st.markdown(f"""
                 <div class="insight-box">
-                    <strong>데이터 분석 요약</strong><br><br>
-                    • 현재가는 최고가 대비 <b>{(curr_p/high_p)*100:.1f}%</b> 수준입니다.<br><br>
-                    • <b>거래량 분석:</b> 하단 차트의 색상은 전일 종가 대비 등락(상승:빨강, 하락:파랑)을 의미합니다.<br><br>
-                    • <b>기술적 분석:</b> 주가와 거래량의 상관관계를 통해 매수/매도 에너지를 확인할 수 있습니다.
+                    <h4 style='color:#00d4ff;'>기술적 상태 요약</h4>
+                    • <b>추세:</b> 현재 주가는 볼린저 밴드 {'상단' if curr_p > df['MA20'].iloc[-1] else '하단'} 부근에서 움직이고 있습니다.<br>
+                    • <b>강도:</b> RSI가 {df['RSI'].iloc[-1]:.1f}로 {'매수세가 강한' if df['RSI'].iloc[-1] > 60 else '매도세가 우세한' if df['RSI'].iloc[-1] < 40 else '안정적인'} 흐름입니다.<br>
+                    • <b>전략:</b> 이동평균선(MA20) 돌파 여부를 주시하세요.
                 </div>
                 """, unsafe_allow_html=True)
-                
-                st.markdown("#### 📋 상세 데이터 리스트")
-                st.dataframe(price_df.sort_index(ascending=False).head(100), use_container_width=True, height=280)
+
+            with c2:
+                st.markdown("### 📰 주요 뉴스 헤드라인")
+                for item in get_stock_news(name):
+                    st.markdown(f"""<div class="news-container"><a href="{item.link}" class="news-title" target="_blank">{item.title}</a></div>""", unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"데이터 처리 중 오류 발생: {e}")
-else:
-    st.info("왼쪽 사이드바에서 종목을 검색하고 [데이터 모델 가동] 버튼을 클릭하세요.")
+        st.error(f"분석 중 오류 발생: {e}")
